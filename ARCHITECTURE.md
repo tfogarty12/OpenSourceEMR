@@ -35,17 +35,18 @@ These are the considerations that determine whether this project is credible.
 None are solved by writing more code faster.
 
 ### 2.1 Clinical content is licensed, not free
+
 You cannot legally ship a serious EMR without third-party clinical knowledge,
 and most of it is **not** open:
 
-| Need | Common source | License reality |
-|------|---------------|-----------------|
+| Need                                | Common source                             | License reality                                                |
+| ----------------------------------- | ----------------------------------------- | -------------------------------------------------------------- |
 | Drug database, dosing, interactions | First Databank, Medi-Span, Multum, RxNorm | RxNorm is free; interaction/dosing knowledge is **commercial** |
-| Diagnoses | ICD-10-CM | Free (CMS/CDC) in the US |
-| Procedures | CPT | **AMA-licensed, fee-based** |
-| Labs/observations | LOINC | Free with license agreement |
-| Clinical terms | SNOMED CT | Free in US (NLM UMLS license); **per-country** elsewhere |
-| Meds (transmission) | NCPDP SCRIPT | Membership/standard fees |
+| Diagnoses                           | ICD-10-CM                                 | Free (CMS/CDC) in the US                                       |
+| Procedures                          | CPT                                       | **AMA-licensed, fee-based**                                    |
+| Labs/observations                   | LOINC                                     | Free with license agreement                                    |
+| Clinical terms                      | SNOMED CT                                 | Free in US (NLM UMLS license); **per-country** elsewhere       |
+| Meds (transmission)                 | NCPDP SCRIPT                              | Membership/standard fees                                       |
 
 **Design consequence:** terminology and drug knowledge live behind a
 **pluggable content provider interface** (`packages/terminology`,
@@ -55,18 +56,20 @@ organization can drop in their licensed FDB/Medi-Span feed. We never hardcode
 CPT descriptors into the repo. See [docs/terminology.md](./docs/terminology.md).
 
 ### 2.2 Prescribing controlled substances (EPCS) is a regulated identity problem
+
 ePrescribing of controlled substances requires DEA-compliant **two-factor
 identity proofing** and a **third-party audit (or certification)** of the
 application against DEA 21 CFR 1311. This is not something you turn on with a
 config flag.
 
-**Design consequence:** the prescribing module separates *clinical decisioning*
-(open) from *transmission + EPCS identity assurance* (an integration boundary).
+**Design consequence:** the prescribing module separates _clinical decisioning_
+(open) from _transmission + EPCS identity assurance_ (an integration boundary).
 We target NCPDP SCRIPT via a certified routing partner (e.g., Surescripts) and
 treat EPCS as a pluggable, audited capability — off by default, with a clear
 compliance checklist.
 
 ### 2.3 Patient identity and record matching
+
 The single most dangerous bug in any EMR is the **wrong patient**. There is no
 national patient identifier in the US. We need a deliberate
 **EMPI (Enterprise Master Patient Index)** strategy: deterministic + probabilistic
@@ -78,20 +81,23 @@ audit, and "are you sure this is the right patient" friction at every order.
 `WHERE name = ?`.
 
 ### 2.4 Certification and "meaningful use"
+
 ONC Health IT Certification (the (b)(10) export, USCDI data classes, §170.315
 criteria) gates real-world adoption and reimbursement. It is a multi-year,
 expensive, test-script-driven process. We will not be certified at v1, and we
-say so plainly. We *architect toward* it (USCDI as a first-class data
+say so plainly. We _architect toward_ it (USCDI as a first-class data
 contract, audit logging to spec, C-CDA generation) so it is achievable, not
 bolted on.
 
 ### 2.5 Availability is a clinical safety property
+
 In a hospital, EMR downtime is a patient-safety event. Uptime, deterministic
 failover, and **downtime/read-only fallback** ("downtime forms", cached MAR)
 are design requirements, not ops afterthoughts. The clinical read path must be
 able to degrade to read-only rather than fail closed entirely.
 
 ### 2.6 Time, units, and rounding are clinical hazards
+
 Timezones, daylight saving, weight-based pediatric dosing, unit conversions
 (mg vs mcg vs mEq), and rounding rules have all killed patients in real systems.
 We standardize on UCUM units, store instants in UTC with originating timezone,
@@ -149,6 +155,7 @@ when scale demands it.
 ```
 
 ### Domain boundaries (bounded contexts)
+
 - `fhir-store` — persistence + search for FHIR resources (the clinical record).
 - `empi` — patient identity & matching.
 - `terminology` — code systems, value sets, ConceptMaps (pluggable content).
@@ -169,17 +176,17 @@ when scale demands it.
 
 ## 4. Technology direction (proposed, open to debate)
 
-| Concern | Proposed default | Rationale |
-|---------|------------------|-----------|
-| Primary datastore | PostgreSQL | Boring, auditable, JSONB for FHIR, strong constraints |
-| FHIR engine | Embed/adapt an existing open FHIR server (e.g. HAPI FHIR-compatible model) behind our own facade | Don't reinvent FHIR persistence/search |
-| Backend language | TypeScript (Node) **or** JVM (Kotlin) — **see Open Question Q1** | Team familiarity vs. HAPI ecosystem |
-| API | FHIR REST + SMART on FHIR; GraphQL/BFF for app-specific reads | Standards out, ergonomics in |
-| Frontend | React + TypeScript design system shared across portal/clinician | One component library, accessibility built in |
-| AuthN/Z | OIDC + SMART scopes; RBAC+ABAC; break-the-glass | Clinical access control is contextual |
-| Eventing | Postgres-backed outbox → message bus | Reliable, no premature Kafka |
-| Integration | Dedicated edge services per protocol (HL7v2, X12, NCPDP) | Isolate ugly legacy formats from the core |
-| Deploy | Containers + Helm; single-node compose for dev/small clinic | Scales down to a clinic and up to a system |
+| Concern           | Proposed default                                                                                 | Rationale                                                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| Primary datastore | PostgreSQL                                                                                       | Boring, auditable, JSONB for FHIR, strong constraints                                                                     |
+| FHIR engine       | Embed/adapt an existing open FHIR server (e.g. HAPI FHIR-compatible model) behind our own facade | Don't reinvent FHIR persistence/search                                                                                    |
+| Backend language  | **TypeScript (Node)** — _decided (Q1)_                                                           | One language across front/back end; large ecosystem; we build a FHIR facade over Postgres rather than inherit a JVM stack |
+| API               | FHIR REST + SMART on FHIR; GraphQL/BFF for app-specific reads                                    | Standards out, ergonomics in                                                                                              |
+| Frontend          | React + TypeScript design system shared across portal/clinician                                  | One component library, accessibility built in                                                                             |
+| AuthN/Z           | OIDC + SMART scopes; RBAC+ABAC; break-the-glass                                                  | Clinical access control is contextual                                                                                     |
+| Eventing          | Postgres-backed outbox → message bus                                                             | Reliable, no premature Kafka                                                                                              |
+| Integration       | Dedicated edge services per protocol (HL7v2, X12, NCPDP)                                         | Isolate ugly legacy formats from the core                                                                                 |
+| Deploy            | Containers + Helm; single-node compose for dev/small clinic                                      | Scales down to a clinic and up to a system                                                                                |
 
 Nothing here is final. The language choice (Q1) blocks a lot and should be
 decided early and deliberately.
@@ -233,33 +240,49 @@ decided early and deliberately.
 
 ---
 
-## 8. License
+## 8. License — _decided (Q2)_
 
-**Undecided — a deliberate community decision.** Two credible paths:
+**Split licensing**, to protect the platform commons while maximizing reuse of
+the building blocks:
 
-- **AGPLv3**: copyleft closes the "SaaS loophole." A vendor offering a hosted
-  fork must share modifications. Strong protection of the commons; can deter
-  some commercial adopters and integrators.
-- **Apache 2.0**: permissive, maximizes adoption and vendor participation,
-  patent grant included; allows closed forks.
+- **The application is AGPLv3.** Anything under `apps/` (the deployable EMR) is
+  copyleft. The Affero clause closes the "SaaS loophole": a vendor offering a
+  hosted fork must share their modifications with their users. This keeps the
+  platform a commons rather than free R&D for a proprietary fork.
+- **The libraries/SDKs are Apache 2.0.** Anything under `packages/` — FHIR
+  model, terminology and medication-knowledge adapters, clients — is permissive
+  with a patent grant, so integrators (including commercial EMRs and our own
+  content-provider adapters) can embed them without copyleft obligations.
 
-A common pattern is **Apache 2.0 for libraries/SDKs** (terminology adapters,
-FHIR client) to maximize reuse, and **AGPLv3 for the application** to protect
-the platform. Tracked as Open Question Q2.
+The split boundary is the directory boundary: `apps/* = AGPLv3`,
+`packages/* = Apache-2.0`. Each package declares its `license` in
+`package.json` and carries the appropriate header. See
+[licensing.md](./licensing.md) for the rule and the SPDX identifiers, the
+root [LICENSE](./LICENSE) (AGPLv3), and [LICENSE-APACHE-2.0.txt](./LICENSE-APACHE-2.0.txt).
 
 ---
 
-## 9. Open questions (decisions we should make explicitly)
+## 9. Decisions & open questions
 
-- **Q1 — Backend stack:** TypeScript/Node vs. Kotlin/JVM. JVM brings the mature
-  HAPI FHIR ecosystem; TS brings a unified language across front and back end.
-- **Q2 — License:** AGPLv3 vs Apache 2.0 vs split (see §8).
-- **Q3 — FHIR engine:** adopt/embed an existing open FHIR server vs. build a
-  focused FHIR facade over Postgres ourselves.
-- **Q4 — Initial care setting:** ambulatory/clinic first (simpler, faster to
-  value) vs. acute/inpatient first (where CPOE/MAR/acuity-staffing shine but
-  complexity is highest).
+**Decided:**
+
+- **Q1 — Backend stack:** ✅ **TypeScript/Node.** Unified language across front
+  and back end; we build a focused FHIR facade over Postgres (see Q3).
+- **Q2 — License:** ✅ **Split — AGPLv3 application, Apache-2.0 libraries** (§8).
+- **Q4 — Initial care setting:** ✅ **Acute / inpatient first.** This is where
+  CPOE, MAR, and acuity-based nurse staffing matter most — and the highest-risk,
+  highest-complexity surface. It means ADT (admit/discharge/transfer), encounter
+  and bed/census management, and inpatient order/medication workflows are
+  first-class earlier than they would be in an ambulatory-first build. The
+  chart-read foundation (FHIR store, EMPI, identity, audit) still comes first
+  because everything sits on it.
+
+**Still open:**
+
+- **Q3 — FHIR engine:** build a focused FHIR facade over Postgres ourselves
+  (current lean, given the TS decision) vs. adopt/embed an existing open FHIR
+  server. Decide before Phase 1 search/query work hardens.
 - **Q5 — Hosting model:** self-host-first vs. reference multi-tenant SaaS.
 
-The roadmap (ROADMAP.md) assumes ambulatory-first (Q4) and a modular monolith
-until proven otherwise, but those are reversible defaults, not commitments.
+The roadmap (ROADMAP.md) reflects inpatient-first ordering and a modular
+monolith until proven otherwise.

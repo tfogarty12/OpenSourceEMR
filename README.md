@@ -47,8 +47,30 @@ cycle workflows.
 - [docs/regulatory.md](./docs/regulatory.md) — regulatory landscape summary.
 - [docs/terminology.md](./docs/terminology.md) — code systems and licensing.
 
+## Stack
+
+TypeScript / Node monorepo (pnpm workspaces). The deployable application lives
+in `apps/`; reusable libraries and content adapters live in `packages/`. See
+[ARCHITECTURE.md §4](./ARCHITECTURE.md#4-technology-direction-proposed-open-to-debate)
+and the dev quick-start in `apps/api` once the skeleton lands.
+
+```
+git clone … && cd OpenSourceEMR
+corepack enable          # provides pnpm
+pnpm install
+docker compose up -d db  # local Postgres
+pnpm dev                 # run the API
+pnpm test                # run tests
+```
+
 ## License
 
-Not yet selected. See [ARCHITECTURE.md §License](./ARCHITECTURE.md#license) —
-this is a community decision (AGPLv3 vs Apache 2.0) we'd like to make
-deliberately rather than by default.
+**Split licensing** (a deliberate decision — see
+[ARCHITECTURE.md §8](./ARCHITECTURE.md#8-license--decided-q2) and
+[licensing.md](./licensing.md)):
+
+- **Application** (`apps/*`) — **AGPLv3** (root [LICENSE](./LICENSE)). Copyleft
+  with the Affero clause, so hosted forks must share their changes.
+- **Libraries** (`packages/*`) — **Apache-2.0**
+  ([LICENSE-APACHE-2.0.txt](./LICENSE-APACHE-2.0.txt)). Permissive, to maximize
+  reuse of the FHIR model and content adapters.

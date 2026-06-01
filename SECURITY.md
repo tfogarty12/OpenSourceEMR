@@ -3,7 +3,7 @@
 OpenSourceEMR handles Protected Health Information (PHI). Security is a
 correctness property here, not a hardening checklist applied at the end.
 
-> This document describes the *target* security model for the platform. It does
+> This document describes the _target_ security model for the platform. It does
 > not constitute a HIPAA compliance attestation, and running this software does
 > not by itself make a deployment compliant. Compliance is a property of a
 > deployment, its operator, its BAAs, and its policies — not of source code.
@@ -22,6 +22,7 @@ follow coordinated disclosure.
 ## Security model (target)
 
 ### Identity & access
+
 - OIDC-based authentication; MFA supported and required for privileged roles.
 - **RBAC + ABAC**: role grants a baseline; attributes (care relationship,
   location, encounter) narrow it. A clinician's access follows the patients
@@ -32,6 +33,7 @@ follow coordinated disclosure.
   clinical workstations.
 
 ### Auditing
+
 - Every PHI access (read included) and every change is recorded: who, what
   resource, when, from where, and why where applicable.
 - The audit log is **append-only and tamper-evident** (e.g., hash-chained) and
@@ -39,6 +41,7 @@ follow coordinated disclosure.
 - Audit is queryable for accounting-of-disclosures and breach investigation.
 
 ### Data protection
+
 - TLS 1.2+ in transit; encryption at rest for database and object storage.
 - Secrets via a secret manager, never in source or images.
 - Field-level protection and special handling for sensitive categories:
@@ -48,17 +51,20 @@ follow coordinated disclosure.
 - Minimum-necessary access enforced at the API.
 
 ### Tenancy & isolation
+
 - Strong tenant isolation for multi-tenant deployments; no cross-tenant
   identifiers in shared caches or logs.
 - PHI must never enter application logs, error trackers, or analytics without
   explicit de-identification.
 
 ### Software supply chain
+
 - Pinned dependencies, SBOM generation, automated dependency and secret
   scanning in CI, signed releases.
 - Reproducible container builds where feasible.
 
 ### Availability as safety
+
 - The clinical read path is designed to degrade to read-only rather than fail
   closed, with documented downtime procedures (cached MAR / downtime forms).
 
