@@ -1,16 +1,19 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { buildApp } from '../app';
+import { bearer, testDependencies } from '../test-support/auth';
 
-const app = buildApp();
+const app = buildApp({}, testDependencies());
+const auth = { authorization: bearer(['physician']) };
 
 afterAll(async () => {
   await app.close();
 });
 
-function createPatient(payload: Record<string, unknown>) {
+function createPatient(payload: Record<string, unknown>, headers: Record<string, string> = auth) {
   return app.inject({
     method: 'POST',
     url: '/fhir/Patient',
+    headers,
     payload: { resourceType: 'Patient', ...payload },
   });
 }
@@ -39,6 +42,7 @@ describe('Patient FHIR routes', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/fhir/Patient',
+      headers: auth,
       payload: { resourceType: 'Practitioner' },
     });
     expect(res.statusCode).toBe(400);
@@ -48,12 +52,17 @@ describe('Patient FHIR routes', () => {
   it('reads, updates (version bump), and deletes a Patient', async () => {
     const created = (await createPatient({ name: [{ family: 'Reyes' }], active: true })).json();
 
-    const read = await app.inject({ method: 'GET', url: `/fhir/Patient/${created.id}` });
+    const read = await app.inject({
+      method: 'GET',
+      url: `/fhir/Patient/${created.id}`,
+      headers: auth,
+    });
     expect(read.statusCode).toBe(200);
 
     const update = await app.inject({
       method: 'PUT',
       url: `/fhir/Patient/${created.id}`,
+      headers: auth,
       payload: {
         resourceType: 'Patient',
         id: created.id,
@@ -65,10 +74,18 @@ describe('Patient FHIR routes', () => {
     expect(update.json().meta.versionId).toBe('2');
     expect(update.json().active).toBe(false);
 
-    const del = await app.inject({ method: 'DELETE', url: `/fhir/Patient/${created.id}` });
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `/fhir/Patient/${created.id}`,
+      headers: auth,
+    });
     expect(del.statusCode).toBe(204);
 
-    const readAfter = await app.inject({ method: 'GET', url: `/fhir/Patient/${created.id}` });
+    const readAfter = await app.inject({
+      method: 'GET',
+      url: `/fhir/Patient/${created.id}`,
+      headers: auth,
+    });
     expect(readAfter.statusCode).toBe(404);
   });
 
@@ -77,6 +94,7 @@ describe('Patient FHIR routes', () => {
     const res = await app.inject({
       method: 'PUT',
       url: `/fhir/Patient/${created.id}`,
+      headers: auth,
       payload: { resourceType: 'Patient', id: 'different', name: [{ family: 'Z' }] },
     });
     expect(res.statusCode).toBe(400);
@@ -88,12 +106,33 @@ describe('Patient FHIR routes', () => {
       birthDate: '2001-02-03',
     });
 
-    const byFamily = await app.inject({ method: 'GET', url: '/fhir/Patient?family=searchme' });
+    const byFamily = await app.inject({
+      method: 'GET',
+      url: '/fhir/Patient?family=searchme',
+      headers: auth,
+    });
     expect(byFamily.statusCode).toBe(200);
     const bundle = byFamily.json();
     expect(bundle.resourceType).toBe('Bundle');
     expect(bundle.type).toBe('searchset');
     expect(bundle.total).toBeGreaterThanOrEqual(1);
     expect(bundle.entry[0].resource.resourceType).toBe('Patient');
+  });
+
+  describe('access control', () => {
+    it('returns 401 without a token', async () => {
+      const res = await app.inject({ method: 'GET', url: '/fhir/Patient?family=x' });
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('returns 403 when the role lacks the permission', async () => {
+      // 'patient' role may read Patient but not write it.
+      const res = await createPatient(
+        { name: [{ family: 'Denied' }] },
+        { authorization: bearer(['patient']) },
+      );
+      expect(res.statusCode).toBe(403);
+      expect(res.json().issue[0].code).toBe('forbidden');
+    });
   });
 });

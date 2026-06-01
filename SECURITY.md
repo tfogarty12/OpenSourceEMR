@@ -19,6 +19,22 @@ We ask researchers to act in good faith: no accessing real PHI, no degradation
 of service, and reasonable disclosure timelines. We will credit reporters who
 follow coordinated disclosure.
 
+## Implemented so far (Phase 0)
+
+The following are in code today (see `apps/api/src/identity` and
+`apps/api/src/audit`); the rest of this section remains the target to build
+toward:
+
+- Fail-closed bearer-token authentication behind a pluggable `TokenVerifier`
+  (OIDC/JWKS-ready; an HS256 dev issuer for local use only).
+- RBAC (roles → `resourceType:action` permissions) enforced on every PHI route.
+- Break-the-glass emergency **read**, allowed but flagged and reasoned in audit.
+- Append-only, **hash-chained (tamper-evident)** audit log of every PHI access
+  and change, with a chain-verification endpoint.
+
+Not yet: MFA, ABAC narrowing (care-relationship), session management, real OIDC
+identity proofing, encryption-at-rest configuration, 42 CFR Part 2 segmentation.
+
 ## Security model (target)
 
 ### Identity & access

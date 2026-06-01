@@ -25,8 +25,14 @@ because everything depends on it.
       forward-only SQL migration runner
 - [x] ADT: admit / discharge / transfer + encounter lifecycle (inpatient core)
       — now persisted through the FHIR store (Postgres when `DATABASE_URL` is set)
-- [ ] Identity: OIDC login, RBAC scaffold, audit log (append-only)
-- **Exit:** a developer can run the stack, log in, and CRUD a Patient as FHIR.
+- [x] Identity: bearer-token auth (OIDC-ready `TokenVerifier`; dev HS256 issuer),
+      RBAC scaffold + break-the-glass, append-only **hash-chained** audit log
+- **Exit (met):** a developer can run the stack, log in (`/auth/dev-login`), and
+  CRUD a Patient as FHIR with every access authorized and audited.
+
+> **Phase 0 is functionally complete.** Remaining hardening before calling it
+> "done done": real OIDC/JWKS verifier, ABAC narrowing (care-relationship), and
+> session management — tracked into Phase 1.
 
 ## Phase 1 — The chart (read before write)
 

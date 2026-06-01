@@ -5,6 +5,8 @@ export interface AppConfig {
   logLevel: string;
   /** Postgres connection string. When absent, the API uses in-memory storage. */
   databaseUrl?: string;
+  /** HS256 secret enabling dev login/token verification. Dev only. */
+  authDevSecret?: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -14,5 +16,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     logLevel: env.LOG_LEVEL ?? 'info',
   };
   if (env.DATABASE_URL) config.databaseUrl = env.DATABASE_URL;
+  if (env.AUTH_DEV_SECRET) config.authDevSecret = env.AUTH_DEV_SECRET;
   return config;
 }

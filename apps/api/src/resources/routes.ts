@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { operationOutcome, searchset, type Resource } from '@osemr/fhir-model';
 import type { FhirStore, SearchParams } from '../fhir-store/store';
+import type { AuditLog } from '../audit/audit-log';
+import { recordAudit } from '../audit/record';
 
 const FHIR_JSON = 'application/fhir+json';
 
@@ -17,19 +19,21 @@ function toSearchParams(query: unknown): SearchParams {
 
 /**
  * Registers FHIR REST CRUD + search for one resource type against the FHIR
- * store: create (POST), read (GET /:id), update (PUT /:id), delete (DELETE),
- * and type-level search (GET). Responses are FHIR JSON; failures are
- * OperationOutcomes.
+ * store. Every route declares its required permission (authz) and records an
+ * audit event for the access.
  */
 export function registerResourceRoutes(
   app: FastifyInstance,
   store: FhirStore,
   resourceType: string,
+  auditLog: AuditLog,
 ): void {
   const base = `/fhir/${resourceType}`;
+  const read = { config: { authz: { resourceType, action: 'read' as const } } };
+  const write = { config: { authz: { resourceType, action: 'write' as const } } };
 
   // create
-  app.post(base, async (request, reply) => {
+  app.post(base, write, async (request, reply) => {
     const body = (request.body ?? {}) as Resource;
     if (body.resourceType !== resourceType) {
       reply
@@ -41,6 +45,12 @@ export function registerResourceRoutes(
     // The server assigns the id on create; ignore any client-supplied one.
     const { id: _ignored, ...rest } = body;
     const created = await store.create(rest as Resource);
+    await recordAudit(auditLog, request, {
+      action: 'create',
+      resourceType,
+      resourceId: created.id ?? '',
+      outcome: 'success',
+    });
     reply
       .code(201)
       .header('Location', `${resourceType}/${created.id}`)
@@ -49,9 +59,15 @@ export function registerResourceRoutes(
   });
 
   // read
-  app.get(`${base}/:id`, async (request, reply) => {
+  app.get(`${base}/:id`, read, async (request, reply) => {
     const { id } = request.params as { id: string };
     const resource = await store.read(resourceType, id);
+    await recordAudit(auditLog, request, {
+      action: 'read',
+      resourceType,
+      resourceId: id,
+      outcome: 'success',
+    });
     if (!resource) {
       reply
         .code(404)
@@ -63,7 +79,7 @@ export function registerResourceRoutes(
   });
 
   // update (or create-at-id)
-  app.put(`${base}/:id`, async (request, reply) => {
+  app.put(`${base}/:id`, write, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = (request.body ?? {}) as Resource;
     if (body.resourceType !== resourceType) {
@@ -81,13 +97,25 @@ export function registerResourceRoutes(
       return;
     }
     const updated = await store.update({ ...body, id });
+    await recordAudit(auditLog, request, {
+      action: 'update',
+      resourceType,
+      resourceId: id,
+      outcome: 'success',
+    });
     reply.type(FHIR_JSON).send(updated);
   });
 
   // delete (soft)
-  app.delete(`${base}/:id`, async (request, reply) => {
+  app.delete(`${base}/:id`, write, async (request, reply) => {
     const { id } = request.params as { id: string };
     const removed = await store.remove(resourceType, id);
+    await recordAudit(auditLog, request, {
+      action: 'delete',
+      resourceType,
+      resourceId: id,
+      outcome: removed ? 'success' : 'error',
+    });
     if (!removed) {
       reply
         .code(404)
@@ -99,8 +127,13 @@ export function registerResourceRoutes(
   });
 
   // search
-  app.get(base, async (request, reply) => {
+  app.get(base, read, async (request, reply) => {
     const results = await store.search(resourceType, toSearchParams(request.query));
+    await recordAudit(auditLog, request, {
+      action: 'search',
+      resourceType,
+      outcome: 'success',
+    });
     reply.type(FHIR_JSON).send(searchset(results));
   });
 }

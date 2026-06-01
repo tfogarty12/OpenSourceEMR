@@ -8,6 +8,10 @@ import { registerAdtRoutes } from './adt/routes';
 import type { FhirStore } from './fhir-store/store';
 import { InMemoryFhirStore } from './fhir-store/in-memory-store';
 import { registerResourceRoutes } from './resources/routes';
+import { InMemoryAuditLog, type AuditLog } from './audit/audit-log';
+import { registerAuth } from './identity/plugin';
+import { AuthnError, AuthzError } from './identity/errors';
+import type { TokenVerifier } from './identity/token';
 
 const FHIR_JSON = 'application/fhir+json';
 
@@ -19,13 +23,28 @@ export interface AppDependencies {
   fhirStore: FhirStore;
   encounters: EncounterRepository;
   adt: AdtService;
+  auditLog: AuditLog;
+  /** When absent, protected routes fail closed (401). */
+  tokenVerifier?: TokenVerifier;
+}
+
+/** Optional collaborators when building dependencies. */
+export interface DependencyParts {
+  auditLog?: AuditLog;
+  tokenVerifier?: TokenVerifier;
 }
 
 /** Build the application's services on top of a given FHIR store. */
-export function dependenciesFor(fhirStore: FhirStore): AppDependencies {
+export function dependenciesFor(
+  fhirStore: FhirStore,
+  parts: DependencyParts = {},
+): AppDependencies {
+  const auditLog = parts.auditLog ?? new InMemoryAuditLog();
   const encounters = new FhirStoreEncounterRepository(fhirStore);
   const adt = new AdtService(encounters);
-  return { fhirStore, encounters, adt };
+  const deps: AppDependencies = { fhirStore, encounters, adt, auditLog };
+  if (parts.tokenVerifier) deps.tokenVerifier = parts.tokenVerifier;
+  return deps;
 }
 
 /** Default wiring: in-memory FHIR store (swapped for Postgres when configured). */
@@ -116,16 +135,46 @@ export function buildApp(
   // Exercises the @osemr/terminology dependency; carries no licensed content.
   app.get('/admin/codesystems', () => ({ codeSystems: Object.values(CodeSystems) }));
 
+  // Authentication + authorization hooks (fail-closed) for everything below.
+  registerAuth(app, {
+    auditLog: deps.auditLog,
+    ...(deps.tokenVerifier ? { tokenVerifier: deps.tokenVerifier } : {}),
+  });
+
+  // Audit log inspection (system-admin only via the AuditEvent permission).
+  app.get(
+    '/admin/audit',
+    { config: { authz: { resourceType: 'AuditEvent', action: 'read' } } },
+    async () => {
+      const events = await deps.auditLog.list();
+      return { total: events.length, valid: await deps.auditLog.verifyChain(), events };
+    },
+  );
+
   // FHIR CRUD + search for the resource types we serve generically.
   for (const resourceType of RESOURCE_ROUTES) {
-    registerResourceRoutes(app, deps.fhirStore, resourceType);
+    registerResourceRoutes(app, deps.fhirStore, resourceType, deps.auditLog);
   }
 
   // ADT workflow + Encounter read/search.
   registerAdtRoutes(app, deps);
 
-  // Translate ADT lifecycle errors into FHIR OperationOutcomes.
+  // Translate domain/auth errors into FHIR OperationOutcomes.
   app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof AuthnError) {
+      reply
+        .code(401)
+        .type(FHIR_JSON)
+        .send(operationOutcome('error', 'login', error.message));
+      return;
+    }
+    if (error instanceof AuthzError) {
+      reply
+        .code(403)
+        .type(FHIR_JSON)
+        .send(operationOutcome('error', 'forbidden', error.message));
+      return;
+    }
     if (error instanceof AdtError) {
       const status =
         error.code === 'not-found' ? 404 : error.code === 'invalid-transition' ? 409 : 422;

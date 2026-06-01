@@ -6,9 +6,35 @@ The OpenSourceEMR backend API — the deployable application.
 
 > **Phase 0.** Serves a health check, FHIR `metadata`, a dev code-systems
 > endpoint, **Patient/Practitioner** CRUD+search, **Encounter** read/search, and
-> the **ADT** (admit/discharge/transfer) workflow. Storage is the FHIR store
-> facade: Postgres when `DATABASE_URL` is set, in-memory otherwise. Not for
-> patient care.
+> the **ADT** (admit/discharge/transfer) workflow — all behind authentication,
+> RBAC, and an append-only audit log. Storage is the FHIR store facade: Postgres
+> when `DATABASE_URL` is set, in-memory otherwise. Not for patient care.
+
+## Security
+
+Every PHI route is **fail-closed**: no valid bearer token → `401`; authenticated
+but lacking the role permission → `403` (recorded as a `denied` audit event).
+
+- **AuthN** (`src/identity/`): bearer JWT verified by a pluggable `TokenVerifier`.
+  Production OIDC (RS256/JWKS) drops in behind that interface; for local dev a
+  `DevTokenVerifier` (HS256) is enabled when `AUTH_DEV_SECRET` is set, with a
+  `POST /auth/dev-login` endpoint to mint tokens. **Dev only.**
+- **RBAC** (`src/identity/rbac.ts`): roles → `${resourceType}:${action}`
+  permissions (`physician`, `nurse`, `registration`, `patient`, `system-admin`).
+- **Break-the-glass**: send `X-Break-The-Glass-Reason: <why>` to gain emergency
+  **read** access; it is allowed but loud — the audit event is flagged
+  `emergencyAccess` with the reason.
+- **Audit** (`src/audit/`): append-only, **hash-chained** (tamper-evident) log of
+  who/what/when/from where/why. `GET /admin/audit` (system-admin) lists events
+  and verifies the chain.
+
+```bash
+# get a dev token, then call a protected route
+TOK=$(curl -s -X POST localhost:8080/auth/dev-login \
+  -H 'content-type: application/json' \
+  -d '{"sub":"dr-house","roles":["physician"]}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+curl -s localhost:8080/fhir/Patient?family=carter -H "authorization: Bearer $TOK"
+```
 
 ## Storage
 
@@ -41,9 +67,12 @@ pnpm --filter @osemr/api migrate        # apply migrations (optional; boot also 
 | `POST /adt/encounters/:id/cancel`    | Cancel an admission                                     |
 | `GET /fhir/Encounter/:id`            | Read an Encounter                                       |
 | `GET /fhir/Encounter?patient=:id`    | Search encounters for a patient (Bundle)                |
+| `POST /auth/dev-login`               | Dev only: mint a bearer token                           |
+| `GET /admin/audit`                   | system-admin: list audit events + verify the chain      |
 
-Errors return a FHIR `OperationOutcome`: unknown id → 404, illegal ADT
-transition (e.g. discharging twice) → 409, bad request → 400.
+Errors return a FHIR `OperationOutcome`: unauthenticated → 401, forbidden → 403,
+unknown id → 404, illegal ADT transition (e.g. discharging twice) → 409, bad
+request → 400.
 
 ## Run it
 
