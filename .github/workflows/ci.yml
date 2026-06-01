@@ -11,6 +11,22 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: osemr
+          POSTGRES_PASSWORD: osemr_dev_only
+          POSTGRES_DB: osemr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U osemr"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://osemr:osemr_dev_only@localhost:5432/osemr
     steps:
       - uses: actions/checkout@v4
 

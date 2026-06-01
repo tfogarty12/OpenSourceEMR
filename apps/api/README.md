@@ -4,11 +4,24 @@ The OpenSourceEMR backend API — the deployable application.
 
 **License: AGPL-3.0-only** (an `apps/*` package — see [licensing.md](../../licensing.md)).
 
-> **Phase 0 skeleton.** This serves a health check, a FHIR `metadata`
-> (CapabilityStatement) stub, a dev code-systems endpoint, and the **ADT**
-> (admit/discharge/transfer) workflow with Encounter read/search. Persistence
-> is in-memory for now (the Postgres store facade is the next brick). Not for
+> **Phase 0.** Serves a health check, FHIR `metadata`, a dev code-systems
+> endpoint, **Patient/Practitioner** CRUD+search, **Encounter** read/search, and
+> the **ADT** (admit/discharge/transfer) workflow. Storage is the FHIR store
+> facade: Postgres when `DATABASE_URL` is set, in-memory otherwise. Not for
 > patient care.
+
+## Storage
+
+The API uses the `FhirStore` facade (`src/fhir-store/`): a versioned JSONB store
+with current + history tables and soft delete. With `DATABASE_URL` set it uses
+Postgres (migrations auto-run on boot); without it, an in-memory store (data is
+not persisted) — handy for a zero-dependency `pnpm dev`.
+
+```bash
+docker compose up -d db                 # local Postgres
+cp .env.example .env                    # sets DATABASE_URL
+pnpm --filter @osemr/api migrate        # apply migrations (optional; boot also does it)
+```
 
 ## Endpoints
 
@@ -16,6 +29,12 @@ The OpenSourceEMR backend API — the deployable application.
 | ------------------------------------ | ------------------------------------------------------- |
 | `GET /health`                        | Liveness/readiness probe                                |
 | `GET /fhir/metadata`                 | FHIR CapabilityStatement                                |
+| `POST /fhir/Patient`                 | Create a Patient (server assigns id) → 201              |
+| `GET /fhir/Patient/:id`              | Read a Patient                                          |
+| `PUT /fhir/Patient/:id`              | Update a Patient (version bump)                         |
+| `DELETE /fhir/Patient/:id`           | Soft-delete a Patient → 204                             |
+| `GET /fhir/Patient?...`              | Search (`identifier`, `family`, `name`, `birthdate`)    |
+| `… /fhir/Practitioner`               | Same CRUD+search for Practitioner                       |
 | `POST /adt/admit`                    | Admit a patient → new in-progress inpatient `Encounter` |
 | `POST /adt/encounters/:id/transfer`  | Transfer to a new location                              |
 | `POST /adt/encounters/:id/discharge` | Discharge (finishes the encounter)                      |
@@ -23,8 +42,8 @@ The OpenSourceEMR backend API — the deployable application.
 | `GET /fhir/Encounter/:id`            | Read an Encounter                                       |
 | `GET /fhir/Encounter?patient=:id`    | Search encounters for a patient (Bundle)                |
 
-Lifecycle errors return a FHIR `OperationOutcome`: unknown id → 404, illegal
-transition (e.g. discharging twice) → 409.
+Errors return a FHIR `OperationOutcome`: unknown id → 404, illegal ADT
+transition (e.g. discharging twice) → 409, bad request → 400.
 
 ## Run it
 
@@ -44,6 +63,11 @@ Then:
 curl localhost:8080/health
 curl localhost:8080/fhir/metadata
 
+# Create and find a patient:
+curl -s -X POST localhost:8080/fhir/Patient -H 'content-type: application/json' \
+  -d '{"resourceType":"Patient","name":[{"family":"Carter","given":["Eli"]}],"birthDate":"1980-04-12"}'
+curl -s "localhost:8080/fhir/Patient?family=carter"
+
 # Admit, transfer, discharge:
 ENC=$(curl -s -X POST localhost:8080/adt/admit \
   -H 'content-type: application/json' \
@@ -62,6 +86,10 @@ curl -s "localhost:8080/fhir/Encounter?patient=p1"
 - `src/app.ts` — `buildApp()` constructs the Fastify instance, wires
   dependencies, and registers routes (separated from start-up so tests can use
   `app.inject` and inject their own dependencies).
-- `src/server.ts` — process entry point: load config, build app, listen.
-- `src/encounters/` — `EncounterRepository` interface + in-memory store.
+- `src/server.ts` — process entry point: choose Postgres/in-memory, migrate, listen.
+- `src/fhir-store/` — the `FhirStore` facade: interface + search registry
+  (`store.ts`), `in-memory-store.ts`, and `postgres-store.ts`.
+- `src/db/` — Postgres pool and the SQL migration runner; `migrations/*.sql`.
+- `src/resources/` — generic FHIR CRUD + search routes (Patient, Practitioner).
+- `src/encounters/` — `EncounterRepository` port + FHIR-store adapter + in-memory.
 - `src/adt/` — the admit/discharge/transfer lifecycle service, errors, and routes.

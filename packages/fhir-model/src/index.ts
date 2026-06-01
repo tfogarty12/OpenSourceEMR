@@ -38,10 +38,17 @@ export interface HumanName {
   text?: string;
 }
 
+/** Resource metadata: version and last-modified instant (FHIR Meta). */
+export interface Meta {
+  versionId?: string;
+  lastUpdated?: Instant;
+}
+
 /** Base shape shared by all resources. */
 export interface Resource {
   resourceType: string;
   id?: string;
+  meta?: Meta;
 }
 
 /** A FHIR Patient (minimal). */
@@ -51,6 +58,14 @@ export interface Patient extends Resource {
   name?: HumanName[];
   gender?: 'male' | 'female' | 'other' | 'unknown';
   birthDate?: string;
+  active?: boolean;
+}
+
+/** A FHIR Practitioner (minimal). */
+export interface Practitioner extends Resource {
+  resourceType: 'Practitioner';
+  identifier?: Identifier[];
+  name?: HumanName[];
   active?: boolean;
 }
 

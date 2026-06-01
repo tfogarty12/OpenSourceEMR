@@ -277,11 +277,14 @@ root [LICENSE](./LICENSE) (AGPLv3), and [LICENSE-APACHE-2.0.txt](./LICENSE-APACH
   chart-read foundation (FHIR store, EMPI, identity, audit) still comes first
   because everything sits on it.
 
+- **Q3 — FHIR engine:** ✅ **Build a focused FHIR facade over Postgres.** Shipped
+  as the `FhirStore` service: resources stored as JSONB with versioned current +
+  history tables, soft delete, and a search-parameter registry shared by the
+  in-memory and Postgres backends. An external FHIR server can still slot in
+  behind the same interface later if scale or conformance demands it.
+
 **Still open:**
 
-- **Q3 — FHIR engine:** build a focused FHIR facade over Postgres ourselves
-  (current lean, given the TS decision) vs. adopt/embed an existing open FHIR
-  server. Decide before Phase 1 search/query work hardens.
 - **Q5 — Hosting model:** self-host-first vs. reference multi-tenant SaaS.
 
 The roadmap (ROADMAP.md) reflects inpatient-first ordering and a modular

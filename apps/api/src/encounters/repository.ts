@@ -1,16 +1,44 @@
 import type { Encounter } from '@osemr/fhir-model';
+import type { FhirStore } from '../fhir-store/store';
 
 /**
  * Persistence boundary for Encounter resources.
  *
- * The ADT service depends only on this interface, never on a concrete store.
- * Phase 0 ships an in-memory implementation; the Postgres-backed FHIR store
- * facade (next Phase 0 brick) drops in here without changing any ADT logic.
+ * The ADT service depends only on this narrow interface, never on a concrete
+ * store. It can be backed by the in-memory implementation below (fast unit
+ * tests) or by the FHIR store facade (`FhirStoreEncounterRepository`), which is
+ * what the running application uses.
  */
 export interface EncounterRepository {
   save(encounter: Encounter): Promise<Encounter>;
   findById(id: string): Promise<Encounter | undefined>;
   findByPatient(patientId: string): Promise<Encounter[]>;
+}
+
+/**
+ * Adapts the generic FhirStore to the EncounterRepository port. `save` is an
+ * upsert: a new admission creates the Encounter; later lifecycle steps update
+ * it (bumping its version and history).
+ */
+export class FhirStoreEncounterRepository implements EncounterRepository {
+  constructor(private readonly store: FhirStore) {}
+
+  async save(encounter: Encounter): Promise<Encounter> {
+    if (!encounter.id) throw new Error('Encounter must have an id before it can be saved');
+    const existing = await this.store.read('Encounter', encounter.id);
+    const saved = existing
+      ? await this.store.update(encounter)
+      : await this.store.create(encounter);
+    return saved as Encounter;
+  }
+
+  async findById(id: string): Promise<Encounter | undefined> {
+    return (await this.store.read('Encounter', id)) as Encounter | undefined;
+  }
+
+  async findByPatient(patientId: string): Promise<Encounter[]> {
+    return (await this.store.search('Encounter', { patient: patientId })) as Encounter[];
+  }
 }
 
 /**

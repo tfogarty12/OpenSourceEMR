@@ -19,10 +19,12 @@ because everything depends on it.
 - [x] Architecture, scope, roadmap, contribution & safety docs
 - [x] Decide Q1 (backend stack → TypeScript/Node) and Q2 (license → split)
 - [x] Repo skeleton, CI, dev environment (one-command up)
-- [ ] FHIR store facade over Postgres; Patient + Practitioner + Encounter
+- [x] FHIR store facade over Postgres; Patient + Practitioner + Encounter
+      — versioned JSONB store (current + history tables), soft delete, CRUD +
+      search; in-memory and Postgres backends behind one `FhirStore` interface;
+      forward-only SQL migration runner
 - [x] ADT: admit / discharge / transfer + encounter lifecycle (inpatient core)
-      — domain + HTTP done against an `EncounterRepository` interface
-      (in-memory for now; Postgres lands with the store facade above)
+      — now persisted through the FHIR store (Postgres when `DATABASE_URL` is set)
 - [ ] Identity: OIDC login, RBAC scaffold, audit log (append-only)
 - **Exit:** a developer can run the stack, log in, and CRUD a Patient as FHIR.
 
