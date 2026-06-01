@@ -20,7 +20,9 @@ because everything depends on it.
 - [x] Decide Q1 (backend stack → TypeScript/Node) and Q2 (license → split)
 - [x] Repo skeleton, CI, dev environment (one-command up)
 - [ ] FHIR store facade over Postgres; Patient + Practitioner + Encounter
-- [ ] ADT: admit / discharge / transfer + encounter lifecycle (inpatient core)
+- [x] ADT: admit / discharge / transfer + encounter lifecycle (inpatient core)
+      — domain + HTTP done against an `EncounterRepository` interface
+      (in-memory for now; Postgres lands with the store facade above)
 - [ ] Identity: OIDC login, RBAC scaffold, audit log (append-only)
 - **Exit:** a developer can run the stack, log in, and CRUD a Patient as FHIR.
 

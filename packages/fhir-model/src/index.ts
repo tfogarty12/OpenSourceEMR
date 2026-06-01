@@ -93,3 +93,78 @@ export function formatHumanName(names: HumanName[] | undefined): string {
   const full = `${given} ${family}`.trim();
   return full.length > 0 ? full : '(unknown)';
 }
+
+/** A literal reference to another resource, e.g. `Patient/123`. */
+export interface Reference {
+  reference?: string;
+  display?: string;
+}
+
+/** A time period with optional start/end (FHIR Period). */
+export interface Period {
+  start?: Instant;
+  end?: Instant;
+}
+
+/** Build a Reference like `{ reference: 'Patient/123' }`. */
+export function reference(resourceType: string, id: string, display?: string): Reference {
+  const ref: Reference = { reference: `${resourceType}/${id}` };
+  return display === undefined ? ref : { ...ref, display };
+}
+
+export type EncounterStatus =
+  | 'planned'
+  | 'arrived'
+  | 'triaged'
+  | 'in-progress'
+  | 'onleave'
+  | 'finished'
+  | 'cancelled'
+  | 'entered-in-error'
+  | 'unknown';
+
+/** One stop in the patient's journey through locations (a bed, a unit). */
+export interface EncounterLocation {
+  location: Reference;
+  status?: 'planned' | 'active' | 'reserved' | 'completed';
+  period?: Period;
+}
+
+/** Inpatient admission/discharge details (FHIR Encounter.hospitalization). */
+export interface EncounterHospitalization {
+  dischargeDisposition?: CodeableConcept;
+}
+
+/** A FHIR Encounter (minimal slice used by ADT). */
+export interface Encounter extends Resource {
+  resourceType: 'Encounter';
+  status: EncounterStatus;
+  /** v3 ActCode class, e.g. IMP (inpatient), AMB (ambulatory), EMER. */
+  class?: Coding;
+  subject?: Reference;
+  period?: Period;
+  location?: EncounterLocation[];
+  hospitalization?: EncounterHospitalization;
+}
+
+export interface BundleEntry<T extends Resource = Resource> {
+  resource: T;
+}
+
+/** A FHIR Bundle (minimal). */
+export interface Bundle<T extends Resource = Resource> extends Resource {
+  resourceType: 'Bundle';
+  type: 'searchset' | 'collection' | 'batch' | 'transaction';
+  total?: number;
+  entry?: BundleEntry<T>[];
+}
+
+/** Wrap resources in a FHIR `searchset` Bundle (how search results are returned). */
+export function searchset<T extends Resource>(resources: T[]): Bundle<T> {
+  return {
+    resourceType: 'Bundle',
+    type: 'searchset',
+    total: resources.length,
+    entry: resources.map((resource) => ({ resource })),
+  };
+}
