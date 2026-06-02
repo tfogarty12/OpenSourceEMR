@@ -1,0 +1,243 @@
+import Fastify, { type FastifyServerOptions } from 'fastify';
+import { operationOutcome } from '@osemr/fhir-model';
+import { CodeSystems } from '@osemr/terminology';
+import { FhirStoreEncounterRepository, type EncounterRepository } from './encounters/repository';
+import { AdtService } from './adt/service';
+import { AdtError } from './adt/errors';
+import { registerAdtRoutes } from './adt/routes';
+import type { FhirStore } from './fhir-store/store';
+import { InMemoryFhirStore } from './fhir-store/in-memory-store';
+import { registerResourceRoutes } from './resources/routes';
+import { InMemoryAuditLog, type AuditLog } from './audit/audit-log';
+import { registerAuth } from './identity/plugin';
+import { AuthnError, AuthzError } from './identity/errors';
+import type { TokenVerifier } from './identity/token';
+import { EmpiService, EmpiError } from './empi/service';
+import { registerEmpiRoutes } from './empi/routes';
+
+const FHIR_JSON = 'application/fhir+json';
+
+/** Resource types served by the generic FHIR CRUD/search routes. */
+const RESOURCE_ROUTES = [
+  'Patient',
+  'Practitioner',
+  'Condition',
+  'AllergyIntolerance',
+  'Observation',
+  'MedicationStatement',
+] as const;
+
+/** Application dependencies, injectable so tests can supply their own. */
+export interface AppDependencies {
+  fhirStore: FhirStore;
+  encounters: EncounterRepository;
+  adt: AdtService;
+  empi: EmpiService;
+  auditLog: AuditLog;
+  /** When absent, protected routes fail closed (401). */
+  tokenVerifier?: TokenVerifier;
+}
+
+/** Optional collaborators when building dependencies. */
+export interface DependencyParts {
+  auditLog?: AuditLog;
+  tokenVerifier?: TokenVerifier;
+}
+
+/** Build the application's services on top of a given FHIR store. */
+export function dependenciesFor(
+  fhirStore: FhirStore,
+  parts: DependencyParts = {},
+): AppDependencies {
+  const auditLog = parts.auditLog ?? new InMemoryAuditLog();
+  const encounters = new FhirStoreEncounterRepository(fhirStore);
+  const adt = new AdtService(encounters);
+  const empi = new EmpiService(fhirStore);
+  const deps: AppDependencies = { fhirStore, encounters, adt, empi, auditLog };
+  if (parts.tokenVerifier) deps.tokenVerifier = parts.tokenVerifier;
+  return deps;
+}
+
+/** Default wiring: in-memory FHIR store (swapped for Postgres when configured). */
+export function defaultDependencies(): AppDependencies {
+  return dependenciesFor(new InMemoryFhirStore());
+}
+
+/**
+ * A deliberately minimal FHIR CapabilityStatement. It advertises that this is
+ * an (early, not-yet-conformant) FHIR R4 server. As real resources land, their
+ * interactions get described here.
+ */
+function buildCapabilityStatement() {
+  return {
+    resourceType: 'CapabilityStatement',
+    status: 'draft',
+    date: new Date().toISOString(),
+    publisher: 'OpenSourceEMR',
+    kind: 'instance',
+    software: { name: 'OpenSourceEMR API', version: '0.0.0' },
+    fhirVersion: '4.0.1',
+    format: ['json'],
+    rest: [
+      {
+        mode: 'server',
+        documentation:
+          'Phase 1. Patient/Practitioner CRUD+search, EMPI ($match/$merge/' +
+          '$unmerge), Encounter read/search + ADT, and the clinical chart ' +
+          '(Condition, AllergyIntolerance, Observation, MedicationStatement). ' +
+          'Not yet FHIR-conformant. Do not use for patient care.',
+        resource: [
+          {
+            type: 'Patient',
+            interaction: [
+              { code: 'read' },
+              { code: 'create' },
+              { code: 'update' },
+              { code: 'delete' },
+              { code: 'search-type' },
+            ],
+            searchParam: [
+              { name: 'identifier', type: 'token' },
+              { name: 'family', type: 'string' },
+              { name: 'name', type: 'string' },
+              { name: 'birthdate', type: 'date' },
+            ],
+            operation: [{ name: 'match' }, { name: 'merge' }, { name: 'unmerge' }],
+          },
+          {
+            type: 'Practitioner',
+            interaction: [
+              { code: 'read' },
+              { code: 'create' },
+              { code: 'update' },
+              { code: 'delete' },
+              { code: 'search-type' },
+            ],
+          },
+          {
+            type: 'Encounter',
+            interaction: [{ code: 'read' }, { code: 'search-type' }],
+            searchParam: [{ name: 'patient', type: 'reference' }],
+          },
+          ...['Condition', 'AllergyIntolerance', 'Observation', 'MedicationStatement'].map(
+            (type) => ({
+              type,
+              interaction: [
+                { code: 'read' },
+                { code: 'create' },
+                { code: 'update' },
+                { code: 'delete' },
+                { code: 'search-type' },
+              ],
+              searchParam: [{ name: 'patient', type: 'reference' }],
+            }),
+          ),
+        ],
+      },
+    ],
+  };
+}
+
+/**
+ * Builds the Fastify application. Kept separate from server start-up so tests
+ * can drive it via `app.inject(...)` without binding a port, and can inject
+ * their own dependencies.
+ */
+export function buildApp(
+  options: FastifyServerOptions = {},
+  deps: AppDependencies = defaultDependencies(),
+) {
+  const app = Fastify(options);
+
+  // Liveness/readiness probe (not PHI, safe to expose to orchestration).
+  app.get('/health', () => ({ status: 'ok', service: 'osemr-api' }));
+
+  // FHIR conformance endpoint.
+  app.get('/fhir/metadata', (_request, reply) => {
+    reply.type(FHIR_JSON).send(buildCapabilityStatement());
+  });
+
+  // Dev/admin: which terminology systems the server knows canonical URIs for.
+  // Exercises the @osemr/terminology dependency; carries no licensed content.
+  app.get('/admin/codesystems', () => ({ codeSystems: Object.values(CodeSystems) }));
+
+  // Authentication + authorization hooks (fail-closed) for everything below.
+  registerAuth(app, {
+    auditLog: deps.auditLog,
+    ...(deps.tokenVerifier ? { tokenVerifier: deps.tokenVerifier } : {}),
+  });
+
+  // Audit log inspection (system-admin only via the AuditEvent permission).
+  app.get(
+    '/admin/audit',
+    { config: { authz: { resourceType: 'AuditEvent', action: 'read' } } },
+    async () => {
+      const events = await deps.auditLog.list();
+      return { total: events.length, valid: await deps.auditLog.verifyChain(), events };
+    },
+  );
+
+  // EMPI: Patient $match / $merge / $unmerge (registered before the generic
+  // Patient routes so the literal operation paths take precedence).
+  registerEmpiRoutes(app, deps.empi, deps.auditLog);
+
+  // FHIR CRUD + search for the resource types we serve generically.
+  for (const resourceType of RESOURCE_ROUTES) {
+    registerResourceRoutes(app, deps.fhirStore, resourceType, deps.auditLog);
+  }
+
+  // ADT workflow + Encounter read/search.
+  registerAdtRoutes(app, deps);
+
+  // Translate domain/auth errors into FHIR OperationOutcomes.
+  app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof AuthnError) {
+      reply
+        .code(401)
+        .type(FHIR_JSON)
+        .send(operationOutcome('error', 'login', error.message));
+      return;
+    }
+    if (error instanceof AuthzError) {
+      reply
+        .code(403)
+        .type(FHIR_JSON)
+        .send(operationOutcome('error', 'forbidden', error.message));
+      return;
+    }
+    if (error instanceof AdtError) {
+      const status =
+        error.code === 'not-found' ? 404 : error.code === 'invalid-transition' ? 409 : 422;
+      reply
+        .code(status)
+        .type(FHIR_JSON)
+        .send(operationOutcome('error', error.code, error.message));
+      return;
+    }
+    if (error instanceof EmpiError) {
+      const status = error.code === 'not-found' ? 404 : error.code === 'conflict' ? 409 : 400;
+      reply
+        .code(status)
+        .type(FHIR_JSON)
+        .send(operationOutcome('error', error.code, error.message));
+      return;
+    }
+    reply.log.error(error);
+    reply
+      .code(500)
+      .type(FHIR_JSON)
+      .send(operationOutcome('fatal', 'exception', 'Internal server error'));
+  });
+
+  // Unknown routes get a FHIR-conformant OperationOutcome, not a bare 404.
+  app.setNotFoundHandler((request, reply) => {
+    reply
+      .code(404)
+      .type(FHIR_JSON)
+      .send(
+        operationOutcome('error', 'not-found', `No route for ${request.method} ${request.url}`),
+      );
+  });
+
+  return app;
+}

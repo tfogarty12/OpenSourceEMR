@@ -1,0 +1,13 @@
+{
+  "name": "@osemr/fhir-model",
+  "version": "0.0.0",
+  "description": "Minimal FHIR R4 types and helpers shared across OpenSourceEMR. Apache-2.0 so it can be reused freely.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

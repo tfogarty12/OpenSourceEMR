@@ -28,7 +28,7 @@ changes are held to a clinical-safety bar, not just a code-quality bar.
 
 Any PR that touches one of these areas requires **two reviewers**, at least one
 with domain context, plus an explicit hazard note in the PR description
-(*what could go wrong clinically, and how this change mitigates it*):
+(_what could go wrong clinically, and how this change mitigates it_):
 
 - `cpoe` (order entry, order sets, decision support)
 - `mar` (medication administration)
@@ -38,6 +38,7 @@ with domain context, plus an explicit hazard note in the PR description
 - any dose, unit, or time calculation
 
 For these changes:
+
 - Dose/unit/time math must have property-based tests.
 - Patient-identity changes must preserve full audit and reversibility.
 - Decision-support changes must consider alert fatigue (false-positive cost).
@@ -47,7 +48,7 @@ For these changes:
 - Small, reviewable PRs. One concern per PR.
 - Conventional commit style (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`).
 - Every behavioral change ships with tests. Clinical-safety code ships with
-  tests *and* a hazard note.
+  tests _and_ a hazard note.
 - Link the issue/decision the PR implements.
 
 ## Code of conduct

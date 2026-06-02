@@ -5,28 +5,54 @@ by feature glamour. Each phase ends with something a real (pilot) site could
 use under supervision. Dates are intentionally omitted — this is a capability
 sequence, not a schedule.
 
-Assumed defaults (see ARCHITECTURE.md Open Questions): ambulatory-first,
-modular monolith, FHIR R4 / US Core.
+Decided direction (see ARCHITECTURE.md §9): **acute / inpatient-first**,
+TypeScript/Node, modular monolith, FHIR R4 / US Core, AGPLv3 app + Apache-2.0
+libs. Inpatient-first pulls ADT (admit/discharge/transfer), encounter and
+bed/census management, inpatient CPOE/MAR, and acuity-based nurse staffing
+forward as central concerns — but the chart-read foundation still ships first
+because everything depends on it.
 
 ---
 
 ## Phase 0 — Foundation (current)
+
 - [x] Architecture, scope, roadmap, contribution & safety docs
-- [ ] Decide Q1 (backend stack) and Q2 (license) — **blocking**
-- [ ] Repo skeleton, CI, dev environment (one-command up)
-- [ ] FHIR store facade over Postgres; Patient + Practitioner + Encounter
-- [ ] Identity: OIDC login, RBAC scaffold, audit log (append-only)
-- **Exit:** a developer can run the stack, log in, and CRUD a Patient as FHIR.
+- [x] Decide Q1 (backend stack → TypeScript/Node) and Q2 (license → split)
+- [x] Repo skeleton, CI, dev environment (one-command up)
+- [x] FHIR store facade over Postgres; Patient + Practitioner + Encounter
+      — versioned JSONB store (current + history tables), soft delete, CRUD +
+      search; in-memory and Postgres backends behind one `FhirStore` interface;
+      forward-only SQL migration runner
+- [x] ADT: admit / discharge / transfer + encounter lifecycle (inpatient core)
+      — now persisted through the FHIR store (Postgres when `DATABASE_URL` is set)
+- [x] Identity: bearer-token auth (OIDC-ready `TokenVerifier`; dev HS256 issuer),
+      RBAC scaffold + break-the-glass, append-only **hash-chained** audit log
+- **Exit (met):** a developer can run the stack, log in (`/auth/dev-login`), and
+  CRUD a Patient as FHIR with every access authorized and audited.
+
+> **Phase 0 is functionally complete.** Remaining hardening before calling it
+> "done done": real OIDC/JWKS verifier, ABAC narrowing (care-relationship), and
+> session management — tracked into Phase 1.
 
 ## Phase 1 — The chart (read before write)
-- [ ] EMPI v1: patient search with match confidence, merge/unmerge + audit
-- [ ] Problem list, allergies/intolerances, medication list (FHIR-native)
-- [ ] Encounters, vitals, results review (Observation/DiagnosticReport)
-- [ ] Clinician web shell + patient banner with hard "right patient" cues
-- [ ] Audit viewer; break-the-glass flow
-- **Exit:** a clinician can safely *view* a longitudinal chart.
+
+- [x] EMPI v1: `$match` with confidence scoring (deterministic identifier +
+      probabilistic demographics), reversible `$merge`/`$unmerge`, fully audited
+- [x] Problem list, allergies/intolerances, medication list (FHIR-native:
+      Condition, AllergyIntolerance, MedicationStatement)
+- [x] Vitals/results as Observation (search by patient + status);
+      DiagnosticReport still to come
+- [x] Clinician web shell (`apps/web`, React/Vite) + patient banner with hard
+      "right patient" cues (merged/inactive → loud "DO NOT CHART" warning)
+- [x] Audit viewer UI (chain-verification badge) + break-the-glass UX
+- **Exit (met):** a clinician can sign in, find a patient, and safely _view_ a
+  longitudinal chart; emergency access and the audit trail are usable from the UI.
+
+> **Phase 1 complete.** Still read-only and not certified/validated. Follow-ups
+> folded into later phases: DiagnosticReport, real OIDC, ABAC narrowing.
 
 ## Phase 2 — Documentation & scheduling
+
 - [ ] Note templates, narrative editor, addenda, e-signature, amendment trail
 - [ ] Patient appointment scheduling + provider/resource scheduling
 - [ ] Patient portal v1: view chart, messages, appointments
@@ -34,6 +60,7 @@ modular monolith, FHIR R4 / US Core.
 - **Exit:** a clinic can schedule, see, document, and share a visit.
 
 ## Phase 3 — Orders & medications (highest-risk; gated)
+
 - [ ] Terminology service (RxNorm, LOINC, ICD-10-CM, SNOMED via UMLS)
 - [ ] Medication-knowledge SPI + open adapter; allergy & interaction checking
 - [ ] CPOE: order sets, order lifecycle, CDS hooks, alert-fatigue controls
@@ -42,12 +69,14 @@ modular monolith, FHIR R4 / US Core.
 - **Exit:** supervised CPOE + MAR + eRx in a pilot, behind a safety review.
 
 ## Phase 4 — Revenue cycle
+
 - [ ] Charge capture + coding assist (ICD-10 + CPT via licensed adapter)
 - [ ] Eligibility (270/271), claims (837), remittance (835), statements
 - [ ] Prior authorization (278) workflow
 - **Exit:** a visit can go from documentation to a submitted, posted claim.
 
 ## Phase 5 — Operations: staffing & credentialing
+
 - [ ] Credentialing: enrollment, primary-source verification hooks
       (NPDB/OIG/SAM/state license/DEA), expirables tracking
 - [ ] Acuity-based nurse staffing (patient classification → required hours)
@@ -55,6 +84,7 @@ modular monolith, FHIR R4 / US Core.
 - **Exit:** a unit can plan a shift and a system can manage provider eligibility.
 
 ## Phase 6 — Interop, reporting, and the long road to certification
+
 - [ ] HL7v2 edge (ADT/ORM/ORU/SIU/DFT), C-CDA exchange, Bulk Data export
 - [ ] Operational + clinical-quality + population-health reporting
 - [ ] Public health reporting (immunizations, syndromic, reportable labs)
@@ -65,21 +95,21 @@ modular monolith, FHIR R4 / US Core.
 
 ## How phases map to the original request
 
-| Requested capability | Phase |
-|---|---|
-| Patient-facing applications | 2 (portal), ongoing |
-| Provider/clinician workflows | 1–3 |
-| Financial/billing workflows | 4 |
-| Provider scheduling | 2 |
-| Credentialing | 5 |
-| Acuity-based nurse staffing | 5 |
-| Workload-based therapy staffing | 5 |
-| CPOE | 3 |
-| MAR | 3 |
-| Prescribing | 3 |
-| Communication layers | 2 |
-| Notes / documentation | 2 |
-| Reports | 6 (with operational reports earlier) |
+| Requested capability            | Phase                                |
+| ------------------------------- | ------------------------------------ |
+| Patient-facing applications     | 2 (portal), ongoing                  |
+| Provider/clinician workflows    | 1–3                                  |
+| Financial/billing workflows     | 4                                    |
+| Provider scheduling             | 2                                    |
+| Credentialing                   | 5                                    |
+| Acuity-based nurse staffing     | 5                                    |
+| Workload-based therapy staffing | 5                                    |
+| CPOE                            | 3                                    |
+| MAR                             | 3                                    |
+| Prescribing                     | 3                                    |
+| Communication layers            | 2                                    |
+| Notes / documentation           | 2                                    |
+| Reports                         | 6 (with operational reports earlier) |
 
 The ordering front-loads the safe, high-value chart and scheduling, and gates
 the dangerous medication/order modules behind real terminology and a safety

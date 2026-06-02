@@ -47,8 +47,32 @@ cycle workflows.
 - [docs/regulatory.md](./docs/regulatory.md) — regulatory landscape summary.
 - [docs/terminology.md](./docs/terminology.md) — code systems and licensing.
 
+## Stack
+
+TypeScript / Node monorepo (pnpm workspaces). Deployable apps live in `apps/`
+(`@osemr/api` — Fastify backend; `@osemr/web` — React/Vite clinician shell);
+reusable libraries live in `packages/`. See
+[ARCHITECTURE.md §4](./ARCHITECTURE.md#4-technology-direction-proposed-open-to-debate),
+[`apps/api`](./apps/api/README.md), and [`apps/web`](./apps/web/README.md).
+
+```
+git clone … && cd OpenSourceEMR
+corepack enable                              # provides pnpm
+pnpm install
+docker compose up -d db                      # local Postgres
+AUTH_DEV_SECRET=dev-secret pnpm dev          # run the API (:8080)
+pnpm dev:web                                 # run the clinician web shell (:5173)
+pnpm test                                    # run all tests (backend + web)
+```
+
 ## License
 
-Not yet selected. See [ARCHITECTURE.md §License](./ARCHITECTURE.md#license) —
-this is a community decision (AGPLv3 vs Apache 2.0) we'd like to make
-deliberately rather than by default.
+**Split licensing** (a deliberate decision — see
+[ARCHITECTURE.md §8](./ARCHITECTURE.md#8-license--decided-q2) and
+[licensing.md](./licensing.md)):
+
+- **Application** (`apps/*`) — **AGPLv3** (root [LICENSE](./LICENSE)). Copyleft
+  with the Affero clause, so hosted forks must share their changes.
+- **Libraries** (`packages/*`) — **Apache-2.0**
+  ([LICENSE-APACHE-2.0.txt](./LICENSE-APACHE-2.0.txt)). Permissive, to maximize
+  reuse of the FHIR model and content adapters.

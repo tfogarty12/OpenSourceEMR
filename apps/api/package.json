@@ -1,0 +1,24 @@
+{
+  "name": "@osemr/api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "OpenSourceEMR backend API (the deployable application).",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "migrate": "tsx src/db/migrate.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@osemr/fhir-model": "workspace:*",
+    "@osemr/terminology": "workspace:*",
+    "fastify": "^5.2.0",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2"
+  }
+}

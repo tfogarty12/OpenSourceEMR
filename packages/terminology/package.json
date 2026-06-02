@@ -1,0 +1,16 @@
+{
+  "name": "@osemr/terminology",
+  "version": "0.0.0",
+  "description": "Pluggable terminology provider SPI (the boundary that keeps licensed content out of the repo). Apache-2.0.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@osemr/fhir-model": "workspace:*"
+  }
+}

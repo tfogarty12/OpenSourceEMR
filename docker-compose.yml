@@ -1,0 +1,22 @@
+# Local development dependencies. This is NOT a production topology.
+# Brings up PostgreSQL for the FHIR store. No PHI should ever be loaded here.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: osemr-db
+    environment:
+      POSTGRES_USER: osemr
+      POSTGRES_PASSWORD: osemr_dev_only
+      POSTGRES_DB: osemr
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U osemr -d osemr']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

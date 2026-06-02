@@ -1,0 +1,10 @@
+# Default owners for everything in the repo.
+*       @tfogarty12
+
+# Clinical-safety change class (see CONTRIBUTING.md): these paths should always
+# get a second, domain-aware reviewer as they come into existence.
+# /apps/api/src/cpoe/                 @tfogarty12
+# /apps/api/src/mar/                  @tfogarty12
+# /apps/api/src/prescribing/          @tfogarty12
+# /packages/medication-knowledge/     @tfogarty12
+# /packages/empi/                     @tfogarty12
