@@ -49,18 +49,20 @@ cycle workflows.
 
 ## Stack
 
-TypeScript / Node monorepo (pnpm workspaces). The deployable application lives
-in `apps/`; reusable libraries and content adapters live in `packages/`. See
-[ARCHITECTURE.md §4](./ARCHITECTURE.md#4-technology-direction-proposed-open-to-debate)
-and the dev quick-start in `apps/api` once the skeleton lands.
+TypeScript / Node monorepo (pnpm workspaces). Deployable apps live in `apps/`
+(`@osemr/api` — Fastify backend; `@osemr/web` — React/Vite clinician shell);
+reusable libraries live in `packages/`. See
+[ARCHITECTURE.md §4](./ARCHITECTURE.md#4-technology-direction-proposed-open-to-debate),
+[`apps/api`](./apps/api/README.md), and [`apps/web`](./apps/web/README.md).
 
 ```
 git clone … && cd OpenSourceEMR
-corepack enable          # provides pnpm
+corepack enable                              # provides pnpm
 pnpm install
-docker compose up -d db  # local Postgres
-pnpm dev                 # run the API
-pnpm test                # run tests
+docker compose up -d db                      # local Postgres
+AUTH_DEV_SECRET=dev-secret pnpm dev          # run the API (:8080)
+pnpm dev:web                                 # run the clinician web shell (:5173)
+pnpm test                                    # run all tests (backend + web)
 ```
 
 ## License

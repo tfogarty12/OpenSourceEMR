@@ -12,6 +12,8 @@
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "pnpm --filter @osemr/api dev",
+    "dev:web": "pnpm --filter @osemr/web dev",
+    "build:web": "pnpm --filter @osemr/web build",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "pnpm -r --parallel exec tsc --noEmit",

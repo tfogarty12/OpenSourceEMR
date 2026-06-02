@@ -42,10 +42,14 @@ because everything depends on it.
       Condition, AllergyIntolerance, MedicationStatement)
 - [x] Vitals/results as Observation (search by patient + status);
       DiagnosticReport still to come
-- [ ] Clinician web shell + patient banner with hard "right patient" cues
-- [ ] Audit viewer UI; break-the-glass UX (API + audit are done — see Phase 0)
-- **Exit (partial):** the chart's data model + identity safety layer are in the
-  API; the read-only clinician UI is the remaining piece.
+- [x] Clinician web shell (`apps/web`, React/Vite) + patient banner with hard
+      "right patient" cues (merged/inactive → loud "DO NOT CHART" warning)
+- [x] Audit viewer UI (chain-verification badge) + break-the-glass UX
+- **Exit (met):** a clinician can sign in, find a patient, and safely _view_ a
+  longitudinal chart; emergency access and the audit trail are usable from the UI.
+
+> **Phase 1 complete.** Still read-only and not certified/validated. Follow-ups
+> folded into later phases: DiagnosticReport, real OIDC, ABAC narrowing.
 
 ## Phase 2 — Documentation & scheduling
 
