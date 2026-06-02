@@ -4,11 +4,12 @@ The OpenSourceEMR backend API — the deployable application.
 
 **License: AGPL-3.0-only** (an `apps/*` package — see [licensing.md](../../licensing.md)).
 
-> **Phase 0.** Serves a health check, FHIR `metadata`, a dev code-systems
-> endpoint, **Patient/Practitioner** CRUD+search, **Encounter** read/search, and
-> the **ADT** (admit/discharge/transfer) workflow — all behind authentication,
-> RBAC, and an append-only audit log. Storage is the FHIR store facade: Postgres
-> when `DATABASE_URL` is set, in-memory otherwise. Not for patient care.
+> **Phase 1.** Serves health/`metadata`, **Patient/Practitioner** CRUD+search,
+> **EMPI** (`$match`/`$merge`/`$unmerge`), the **ADT** workflow, and the clinical
+> chart (**Condition, AllergyIntolerance, Observation, MedicationStatement**) —
+> all behind authentication, RBAC, break-the-glass, and an append-only audit
+> log. Storage is the FHIR store facade: Postgres when `DATABASE_URL` is set,
+> in-memory otherwise. **Not for patient care.**
 
 ## Security
 
@@ -67,8 +68,19 @@ pnpm --filter @osemr/api migrate        # apply migrations (optional; boot also 
 | `POST /adt/encounters/:id/cancel`    | Cancel an admission                                     |
 | `GET /fhir/Encounter/:id`            | Read an Encounter                                       |
 | `GET /fhir/Encounter?patient=:id`    | Search encounters for a patient (Bundle)                |
+| `POST /fhir/Patient/$match`          | EMPI: rank candidate patients by match confidence       |
+| `POST /fhir/Patient/:id/$merge`      | EMPI: merge `:id` into `targetId` (reversible, audited) |
+| `POST /fhir/Patient/:id/$unmerge`    | EMPI: reverse a prior merge                             |
+| `… /fhir/Condition`                  | Problem list — CRUD + search (`patient`)                |
+| `… /fhir/AllergyIntolerance`         | Allergies — CRUD + search (`patient`)                   |
+| `… /fhir/Observation`                | Vitals/results — CRUD + search (`patient`, `status`)    |
+| `… /fhir/MedicationStatement`        | Medications — CRUD + search (`patient`, `status`)       |
 | `POST /auth/dev-login`               | Dev only: mint a bearer token                           |
 | `GET /admin/audit`                   | system-admin: list audit events + verify the chain      |
+
+EMPI `$match` returns a searchset `Bundle` whose entries carry
+`search.score` (0–1) and `search.mode: "match"`. Merge inactivates the source
+(`active: false`) and links it `replaced-by` the survivor; unmerge reverses both.
 
 Errors return a FHIR `OperationOutcome`: unauthenticated → 401, forbidden → 403,
 unknown id → 404, illegal ADT transition (e.g. discharging twice) → 409, bad
@@ -86,27 +98,28 @@ cp .env.example .env
 pnpm dev               # starts this API with hot reload (tsx watch)
 ```
 
-Then:
+Then (protected routes need a bearer token — see Security above):
 
 ```bash
 curl localhost:8080/health
 curl localhost:8080/fhir/metadata
 
+TOK=$(curl -s -X POST localhost:8080/auth/dev-login -H 'content-type: application/json' \
+  -d '{"sub":"dr","roles":["physician"]}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+H="authorization: Bearer $TOK"
+
 # Create and find a patient:
-curl -s -X POST localhost:8080/fhir/Patient -H 'content-type: application/json' \
+curl -s -X POST localhost:8080/fhir/Patient -H "$H" -H 'content-type: application/json' \
   -d '{"resourceType":"Patient","name":[{"family":"Carter","given":["Eli"]}],"birthDate":"1980-04-12"}'
-curl -s "localhost:8080/fhir/Patient?family=carter"
+curl -s "localhost:8080/fhir/Patient?family=carter" -H "$H"
 
 # Admit, transfer, discharge:
-ENC=$(curl -s -X POST localhost:8080/adt/admit \
-  -H 'content-type: application/json' \
-  -d '{"patientId":"p1","location":"bed-101"}')
+ENC=$(curl -s -X POST localhost:8080/adt/admit -H "$H" \
+  -H 'content-type: application/json' -d '{"patientId":"p1","location":"bed-101"}')
 ID=$(echo "$ENC" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')
-curl -s -X POST localhost:8080/adt/encounters/$ID/transfer \
-  -H 'content-type: application/json' -d '{"toLocation":"icu-3"}'
-curl -s -X POST localhost:8080/adt/encounters/$ID/discharge \
+curl -s -X POST localhost:8080/adt/encounters/$ID/discharge -H "$H" \
   -H 'content-type: application/json' -d '{"disposition":"home"}'
-curl -s "localhost:8080/fhir/Encounter?patient=p1"
+curl -s "localhost:8080/fhir/Encounter?patient=p1" -H "$H"
 ```
 
 ## Layout
@@ -119,6 +132,11 @@ curl -s "localhost:8080/fhir/Encounter?patient=p1"
 - `src/fhir-store/` — the `FhirStore` facade: interface + search registry
   (`store.ts`), `in-memory-store.ts`, and `postgres-store.ts`.
 - `src/db/` — Postgres pool and the SQL migration runner; `migrations/*.sql`.
-- `src/resources/` — generic FHIR CRUD + search routes (Patient, Practitioner).
+- `src/resources/` — generic FHIR CRUD + search routes (Patient, Practitioner,
+  Condition, AllergyIntolerance, Observation, MedicationStatement).
 - `src/encounters/` — `EncounterRepository` port + FHIR-store adapter + in-memory.
 - `src/adt/` — the admit/discharge/transfer lifecycle service, errors, and routes.
+- `src/empi/` — patient matching (`matching.ts`), merge/unmerge service, and the
+  `$match`/`$merge`/`$unmerge` routes.
+- `src/identity/` — auth (`TokenVerifier`, JWT), RBAC, break-the-glass plugin.
+- `src/audit/` — append-only hash-chained audit log (in-memory + Postgres).

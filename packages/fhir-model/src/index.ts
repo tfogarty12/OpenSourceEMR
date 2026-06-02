@@ -51,6 +51,12 @@ export interface Resource {
   meta?: Meta;
 }
 
+/** How one Patient record relates to another (used for merge/unmerge). */
+export interface PatientLink {
+  other: Reference;
+  type: 'replaced-by' | 'replaces' | 'refer' | 'seealso';
+}
+
 /** A FHIR Patient (minimal). */
 export interface Patient extends Resource {
   resourceType: 'Patient';
@@ -59,6 +65,7 @@ export interface Patient extends Resource {
   gender?: 'male' | 'female' | 'other' | 'unknown';
   birthDate?: string;
   active?: boolean;
+  link?: PatientLink[];
 }
 
 /** A FHIR Practitioner (minimal). */
@@ -67,6 +74,51 @@ export interface Practitioner extends Resource {
   identifier?: Identifier[];
   name?: HumanName[];
   active?: boolean;
+}
+
+/** A measured quantity with UCUM units. */
+export interface Quantity {
+  value?: number;
+  unit?: string;
+  system?: Uri;
+  code?: string;
+}
+
+/** A problem-list / diagnosis entry (minimal FHIR Condition). */
+export interface Condition extends Resource {
+  resourceType: 'Condition';
+  subject?: Reference;
+  clinicalStatus?: CodeableConcept;
+  code?: CodeableConcept;
+  recordedDate?: string;
+}
+
+/** An allergy or intolerance (minimal FHIR AllergyIntolerance). */
+export interface AllergyIntolerance extends Resource {
+  resourceType: 'AllergyIntolerance';
+  patient?: Reference;
+  clinicalStatus?: CodeableConcept;
+  code?: CodeableConcept;
+  criticality?: 'low' | 'high' | 'unable-to-assess';
+}
+
+/** A measurement or result — vitals and labs (minimal FHIR Observation). */
+export interface Observation extends Resource {
+  resourceType: 'Observation';
+  status?: string;
+  category?: CodeableConcept[];
+  code?: CodeableConcept;
+  subject?: Reference;
+  effectiveDateTime?: string;
+  valueQuantity?: Quantity;
+}
+
+/** A statement that a patient is/was taking a medication (minimal). */
+export interface MedicationStatement extends Resource {
+  resourceType: 'MedicationStatement';
+  status?: string;
+  subject?: Reference;
+  medicationCodeableConcept?: CodeableConcept;
 }
 
 export type IssueSeverity = 'fatal' | 'error' | 'warning' | 'information';
@@ -164,6 +216,8 @@ export interface Encounter extends Resource {
 
 export interface BundleEntry<T extends Resource = Resource> {
   resource: T;
+  /** Present in search/$match results: the match mode and relevance score. */
+  search?: { mode?: 'match' | 'include' | 'outcome'; score?: number };
 }
 
 /** A FHIR Bundle (minimal). */

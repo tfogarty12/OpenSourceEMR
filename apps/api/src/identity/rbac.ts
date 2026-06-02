@@ -7,6 +7,13 @@ import type { Action, Principal } from './types';
 // add ABAC narrowing (a clinician sees the patients they actually care for) and
 // patient-scoped access. Those refinements layer on top of this baseline.
 
+// Clinical chart resource types (problem list, allergies, results, meds).
+const CLINICAL = ['Condition', 'AllergyIntolerance', 'Observation', 'MedicationStatement'];
+
+function perms(types: string[], actions: Action[]): string[] {
+  return types.flatMap((t) => actions.map((a) => `${t}:${a}`));
+}
+
 export const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
   'system-admin': ['*:*'],
   physician: [
@@ -15,11 +22,20 @@ export const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     'Practitioner:read',
     'Encounter:read',
     'Encounter:write',
+    ...perms(CLINICAL, ['read', 'write']),
   ],
-  nurse: ['Patient:read', 'Practitioner:read', 'Encounter:read', 'Encounter:write'],
+  nurse: [
+    'Patient:read',
+    'Practitioner:read',
+    'Encounter:read',
+    'Encounter:write',
+    // Nurses chart observations (vitals); read the rest of the chart.
+    'Observation:write',
+    ...perms(CLINICAL, ['read']),
+  ],
   registration: ['Patient:read', 'Patient:write', 'Practitioner:read', 'Practitioner:write'],
   // Patient-facing access; ABAC narrowing to the caller's own record is a TODO.
-  patient: ['Patient:read'],
+  patient: ['Patient:read', ...perms(CLINICAL, ['read'])],
 };
 
 export function permissionsFor(roles: string[]): Set<string> {

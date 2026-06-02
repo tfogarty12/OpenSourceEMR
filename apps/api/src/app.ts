@@ -12,17 +12,27 @@ import { InMemoryAuditLog, type AuditLog } from './audit/audit-log';
 import { registerAuth } from './identity/plugin';
 import { AuthnError, AuthzError } from './identity/errors';
 import type { TokenVerifier } from './identity/token';
+import { EmpiService, EmpiError } from './empi/service';
+import { registerEmpiRoutes } from './empi/routes';
 
 const FHIR_JSON = 'application/fhir+json';
 
 /** Resource types served by the generic FHIR CRUD/search routes. */
-const RESOURCE_ROUTES = ['Patient', 'Practitioner'] as const;
+const RESOURCE_ROUTES = [
+  'Patient',
+  'Practitioner',
+  'Condition',
+  'AllergyIntolerance',
+  'Observation',
+  'MedicationStatement',
+] as const;
 
 /** Application dependencies, injectable so tests can supply their own. */
 export interface AppDependencies {
   fhirStore: FhirStore;
   encounters: EncounterRepository;
   adt: AdtService;
+  empi: EmpiService;
   auditLog: AuditLog;
   /** When absent, protected routes fail closed (401). */
   tokenVerifier?: TokenVerifier;
@@ -42,7 +52,8 @@ export function dependenciesFor(
   const auditLog = parts.auditLog ?? new InMemoryAuditLog();
   const encounters = new FhirStoreEncounterRepository(fhirStore);
   const adt = new AdtService(encounters);
-  const deps: AppDependencies = { fhirStore, encounters, adt, auditLog };
+  const empi = new EmpiService(fhirStore);
+  const deps: AppDependencies = { fhirStore, encounters, adt, empi, auditLog };
   if (parts.tokenVerifier) deps.tokenVerifier = parts.tokenVerifier;
   return deps;
 }
@@ -71,9 +82,10 @@ function buildCapabilityStatement() {
       {
         mode: 'server',
         documentation:
-          'Phase 0. Patient/Practitioner CRUD+search, Encounter read/search, ' +
-          'and ADT (admit/transfer/discharge/cancel) operations are available; ' +
-          'not yet FHIR-conformant. Do not use for patient care.',
+          'Phase 1. Patient/Practitioner CRUD+search, EMPI ($match/$merge/' +
+          '$unmerge), Encounter read/search + ADT, and the clinical chart ' +
+          '(Condition, AllergyIntolerance, Observation, MedicationStatement). ' +
+          'Not yet FHIR-conformant. Do not use for patient care.',
         resource: [
           {
             type: 'Patient',
@@ -90,6 +102,7 @@ function buildCapabilityStatement() {
               { name: 'name', type: 'string' },
               { name: 'birthdate', type: 'date' },
             ],
+            operation: [{ name: 'match' }, { name: 'merge' }, { name: 'unmerge' }],
           },
           {
             type: 'Practitioner',
@@ -106,6 +119,19 @@ function buildCapabilityStatement() {
             interaction: [{ code: 'read' }, { code: 'search-type' }],
             searchParam: [{ name: 'patient', type: 'reference' }],
           },
+          ...['Condition', 'AllergyIntolerance', 'Observation', 'MedicationStatement'].map(
+            (type) => ({
+              type,
+              interaction: [
+                { code: 'read' },
+                { code: 'create' },
+                { code: 'update' },
+                { code: 'delete' },
+                { code: 'search-type' },
+              ],
+              searchParam: [{ name: 'patient', type: 'reference' }],
+            }),
+          ),
         ],
       },
     ],
@@ -151,6 +177,10 @@ export function buildApp(
     },
   );
 
+  // EMPI: Patient $match / $merge / $unmerge (registered before the generic
+  // Patient routes so the literal operation paths take precedence).
+  registerEmpiRoutes(app, deps.empi, deps.auditLog);
+
   // FHIR CRUD + search for the resource types we serve generically.
   for (const resourceType of RESOURCE_ROUTES) {
     registerResourceRoutes(app, deps.fhirStore, resourceType, deps.auditLog);
@@ -178,6 +208,14 @@ export function buildApp(
     if (error instanceof AdtError) {
       const status =
         error.code === 'not-found' ? 404 : error.code === 'invalid-transition' ? 409 : 422;
+      reply
+        .code(status)
+        .type(FHIR_JSON)
+        .send(operationOutcome('error', error.code, error.message));
+      return;
+    }
+    if (error instanceof EmpiError) {
+      const status = error.code === 'not-found' ? 404 : error.code === 'conflict' ? 409 : 400;
       reply
         .code(status)
         .type(FHIR_JSON)

@@ -6,6 +6,8 @@ export interface AuditFields {
   resourceType: string;
   resourceId?: string;
   outcome: AuditOutcome;
+  /** Extra context (e.g. merge target); recorded as the event reason. */
+  detail?: string;
 }
 
 /**
@@ -18,6 +20,7 @@ export function recordAudit(
   fields: AuditFields,
 ): Promise<unknown> {
   const emergency = request.emergencyReason;
+  const reason = emergency ?? fields.detail;
   return auditLog.record({
     actor: request.principal?.subject ?? 'anonymous',
     sourceIp: request.ip,
@@ -25,6 +28,7 @@ export function recordAudit(
     resourceType: fields.resourceType,
     ...(fields.resourceId ? { resourceId: fields.resourceId } : {}),
     outcome: fields.outcome,
-    ...(emergency ? { emergencyAccess: true, reason: emergency } : {}),
+    ...(emergency ? { emergencyAccess: true } : {}),
+    ...(reason ? { reason } : {}),
   });
 }

@@ -74,6 +74,25 @@ export const SEARCH_PARAMS: Record<string, Record<string, ParamDef>> = {
     patient: { kind: 'reference', field: 'subject', targetType: 'Patient' },
     status: { kind: 'equals', field: 'status' },
   },
+  Condition: {
+    _id: { kind: 'id' },
+    patient: { kind: 'reference', field: 'subject', targetType: 'Patient' },
+  },
+  AllergyIntolerance: {
+    _id: { kind: 'id' },
+    // AllergyIntolerance points to the patient via `patient`, not `subject`.
+    patient: { kind: 'reference', field: 'patient', targetType: 'Patient' },
+  },
+  Observation: {
+    _id: { kind: 'id' },
+    patient: { kind: 'reference', field: 'subject', targetType: 'Patient' },
+    status: { kind: 'equals', field: 'status' },
+  },
+  MedicationStatement: {
+    _id: { kind: 'id' },
+    patient: { kind: 'reference', field: 'subject', targetType: 'Patient' },
+    status: { kind: 'equals', field: 'status' },
+  },
 };
 
 export function paramDef(resourceType: string, name: string): ParamDef | undefined {

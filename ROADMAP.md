@@ -36,12 +36,16 @@ because everything depends on it.
 
 ## Phase 1 — The chart (read before write)
 
-- [ ] EMPI v1: patient search with match confidence, merge/unmerge + audit
-- [ ] Problem list, allergies/intolerances, medication list (FHIR-native)
-- [ ] Encounters, vitals, results review (Observation/DiagnosticReport)
+- [x] EMPI v1: `$match` with confidence scoring (deterministic identifier +
+      probabilistic demographics), reversible `$merge`/`$unmerge`, fully audited
+- [x] Problem list, allergies/intolerances, medication list (FHIR-native:
+      Condition, AllergyIntolerance, MedicationStatement)
+- [x] Vitals/results as Observation (search by patient + status);
+      DiagnosticReport still to come
 - [ ] Clinician web shell + patient banner with hard "right patient" cues
-- [ ] Audit viewer; break-the-glass flow
-- **Exit:** a clinician can safely _view_ a longitudinal chart.
+- [ ] Audit viewer UI; break-the-glass UX (API + audit are done — see Phase 0)
+- **Exit (partial):** the chart's data model + identity safety layer are in the
+  API; the read-only clinician UI is the remaining piece.
 
 ## Phase 2 — Documentation & scheduling
 
